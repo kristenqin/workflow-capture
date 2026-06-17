@@ -4,55 +4,95 @@
 
 本文档定义 `workflow-capture` 的产品意图。
 
-本项目的目标不是做一个普通的 Markdown 美化工具，也不是单纯把列表转换成流程图，而是把 GPT 对话、Markdown 文档、Agent 回复中隐式存在的任务流程定义，提取为可编辑、可渲染、可复用、可分发的 Workflow 对象。
+本项目的目标不是做一个新的 Workflow 执行引擎，也不是重新实现 n8n、GitHub Actions、Temporal、LangGraph 这类自动化工具已经具备的能力。
+
+本项目真正要解决的是：
+
+> GPT 对话、Markdown 文档、Agent 回复里经常隐式包含任务流程，但这些流程仍然停留在自然语言文本里，无法被稳定捕获、编辑、渲染，并适配到外部自动化工具。
 
 一句话定义：
 
-> Workflow Capture 是一个将自然语言任务流程编译成结构化 Workflow 对象的工具。
+> Workflow Capture 是一个从 GPT 对话和 Markdown 中提取隐式任务流程，并转换为可视化、可编辑、可导出的 Workflow IR 的工具。
+
+其中 IR 指 Intermediate Representation，即中间表示。
 
 ---
 
-## 2. 背景问题
+## 2. 产品共识
 
-在与 GPT 交互时，GPT 经常会输出任务执行流程，例如：
+### 2.1 不做 Workflow Runtime
+
+Workflow Capture 不负责真正执行任务。
+
+不做：
+
+- 任务调度
+- 状态机运行
+- 重试机制
+- 队列系统
+- 定时任务
+- 外部账号授权
+- SaaS 连接器
+- 执行日志
+- 运行时权限控制
+
+这些能力已经有成熟工具负责，例如：
+
+- n8n / Zapier / Make：自动化集成
+- GitHub Actions：代码仓库与 CI/CD 自动化
+- Temporal：可靠长流程编排
+- LangGraph：Agent 状态流转
+- Airflow / Prefect：数据管道
+
+Workflow Capture 应该和这些工具兼容，而不是替代它们。
+
+### 2.2 做 Workflow Intent Compiler
+
+Workflow Capture 负责把自然语言里的流程意图编译成轻量中间表示。
+
+核心路径：
 
 ```text
-先分析需求 → 再拆分模块 → 然后定义数据结构 → 接着实现 MVP → 最后测试验收
+GPT Reply / Markdown / Agent Response
+  ↓
+Workflow Intent Extraction
+  ↓
+Workflow IR
+  ↓
+Human Review / Edit
+  ↓
+Export Adapter
+  ↓
+n8n / GitHub Actions / Temporal Skeleton / LangGraph Skeleton / Agent Task Pack
 ```
 
-这些内容在人类阅读时是清楚的，但在系统层面仍然只是普通文本。它们缺少对象结构，因此无法被稳定地：
-
-- 渲染为流程视图
-- 编辑为可维护资产
-- 导出给 Agent 执行
-- 追踪执行状态
-- 复用到相似任务
-- 形成长期流程资产库
-
-当前的核心问题是：
-
-> GPT 已经在隐式生成 Workflow，但这些 Workflow 被困在 Markdown 载体里，没有变成真正的对象。
+也就是说，本产品的核心不是 Execute，而是 Capture + Compile + Export。
 
 ---
 
-## 3. 产品判断
+## 3. 背景问题
 
-本产品不把 Markdown 当成最终产物，而是把 Markdown 当成一种流程意图的输入载体。
+GPT 经常会输出类似内容：
 
-因此，系统真正要处理的不是 Markdown 语法，而是文本背后的任务语义。
+```text
+先分析需求，再拆分模块，然后定义数据结构，接着实现 MVP，最后测试验收。
+```
 
-需要识别的语义包括：
+这段文本在人类看来是一个流程，但在系统看来仍然只是 Markdown 或普通文本。
 
-| 文本信号 | 结构化含义 |
-|---|---|
-| 首先、第一步、先 | 阶段开始 |
-| 然后、接着、再 | 顺序关系 |
-| 如果、否则、当……时 | 条件关系 |
-| 需要先完成 A 再做 B | 依赖关系 |
-| 输出、产出、交付 | Output |
-| 验收、检查、确认 | Checkpoint |
-| 注意、风险、避免 | Risk / Constraint |
-| 交给 Agent 执行 | Executor / Assignment |
+它缺少：
+
+- 可识别的任务节点
+- 节点之间的关系
+- 哪些部分可以自动化
+- 哪些部分必须人工处理
+- 哪些节点适合导出到 n8n
+- 哪些节点适合导出到 GitHub Actions
+- 哪些节点只能作为 Agent Task Pack
+
+当前核心问题不是“没有执行引擎”，而是：
+
+> GPT 生成了大量隐式 Workflow Intent，但这些 intent 没有被捕获为可适配外部工具的中间表示。
 
 ---
 
@@ -62,123 +102,152 @@
 
 MVP 阶段只解决一个核心问题：
 
-> 把一段包含任务流程的 GPT 回复或 Markdown 文本，解析成结构化 Workflow 对象，并渲染成可读、可编辑的流程视图。
+> 把一段包含任务流程的 GPT 回复或 Markdown 文本，解析成轻量 Workflow IR，并渲染成可读、可编辑、可导出的结构。
 
 MVP 需要支持：
 
 1. 粘贴原始 GPT 回复或 Markdown 文本
-2. 自动抽取 Workflow 草稿
-3. 生成符合 Schema 的 Workflow JSON
-4. 渲染为阶段卡片视图
-5. 渲染为简单线性流程视图
-6. 支持用户编辑节点内容
-7. 支持导出 JSON / Markdown / Agent Task Pack
+2. 自动识别流程意图
+3. 抽取 TaskNode、Relation、Artifact
+4. 判断节点自动化可能性
+5. 生成符合 Schema 的 Workflow IR JSON
+6. 渲染为线性流程视图和任务卡片视图
+7. 支持用户修正节点内容、关系和自动化提示
+8. 支持导出 Generic JSON / Markdown / Agent Task Pack
 
-### 4.2 非 MVP 目标
+### 4.2 后续目标
 
-以下能力暂不进入第一阶段：
+后续可以逐步支持外部工具适配器：
 
-- 自动执行 Workflow
-- 多 Agent 调度
-- 复杂 DAG 编排
-- 权限系统
-- 团队协作
-- 版本管理
-- 外部工具调用
-- 自动创建 GitHub Issue / PR
+```text
+MVP-1：Workflow IR + JSON / Markdown / Agent Task Pack
+MVP-2：n8n Exporter
+MVP-3：GitHub Actions Exporter
+MVP-4：LangGraph / Temporal Skeleton Exporter
+```
 
-原因：第一阶段最重要的问题不是执行，而是“能否稳定地从文本中抽出干净的流程对象”。
+### 4.3 非目标
+
+以下能力明确不属于本项目核心范围：
+
+- 自建 Workflow Runtime
+- 自建可视化自动化执行平台
+- 自建 SaaS Connector 市场
+- 自建凭证管理系统
+- 自建任务队列与重试机制
+- 自建复杂权限协作系统
+- 替代 n8n / GitHub Actions / Temporal / LangGraph
 
 ---
 
-## 5. 核心用户场景
+## 5. 产品边界
 
-### 场景一：从 GPT 回复中捕获隐式流程
-
-用户和 GPT 讨论一个任务后，GPT 输出了一段执行建议。用户希望把这段建议转成 Workflow，而不是复制到普通文档里。
-
-流程：
+Workflow Capture 负责：
 
 ```text
-GPT 回复 → 粘贴到 Workflow Capture → 自动解析 → 渲染为 Workflow → 用户修正 → 保存
+Capture：捕获 GPT / Markdown 中的隐式流程
+Compile：转换为 Workflow IR
+Review：渲染给用户审查和修正
+Export：导出到外部工具或通用格式
 ```
 
-### 场景二：将流程沉淀为可复用资产
-
-用户在多个项目中反复使用类似流程，例如设计审查、需求定义、文档打包、重构验收。用户希望把这些流程沉淀为 Workflow Fragment。
-
-流程：
+Workflow Capture 不负责：
 
 ```text
-一次性对话流程 → Workflow Fragment → 复用 / 改造 / 分发
+Execute：真正运行 workflow
+Schedule：调度任务
+Retry：失败重试
+Credential：管理外部服务密钥
+Runtime State：维护长期运行状态
+Connector：连接所有 SaaS 服务
 ```
 
-### 场景三：将 Workflow 分发给 Agent 执行
+更短的边界表达：
 
-用户把一个整理后的 Workflow 导出为 Agent Task Pack，让不同 Agent 按阶段执行。
-
-流程：
-
-```text
-Workflow Object → Agent Task Pack → 分发给实现 / 审查 / 测试 Agent
-```
+> Capture，不 Execute。Compile，不 Runtime。IR，不 Engine。Adapter，不 Platform。
 
 ---
 
-## 6. 产品核心概念
+## 6. 核心用户场景
 
-### 6.1 Workflow
+### 场景一：从 GPT 回复中捕获流程意图
 
-Workflow 是一个完整任务流程对象，描述一个任务从目标到交付的主要阶段、关系、产出和验收标准。
+用户和 GPT 讨论一个任务后，GPT 输出了一段执行建议。用户希望把这段建议转成结构化 IR，而不是复制到普通文档里。
 
-### 6.2 Workflow Fragment
+```text
+GPT 回复 → Workflow Capture → Workflow IR → 可视化审查 → 保存
+```
 
-Workflow Fragment 是可复用的局部流程。GPT 对话中经常出现的不是完整 Workflow，而是某个局部任务流程，例如：
+### 场景二：判断哪些步骤适合自动化
 
-- 视觉审查流程
-- 文档定义流程
-- MVP 拆解流程
-- 代码重构流程
-- 测试验收流程
+用户拿到一个流程后，不确定哪些步骤可以交给工具执行，哪些必须人工处理。
 
-因此系统必须支持 Fragment，而不是只支持完整大流程。
+```text
+Workflow IR → Automation Hint → manual / automatable / external
+```
 
-### 6.3 Stage
+示例：
 
-Stage 是 Workflow 的主要阶段，表达一个有明确意图、输入、动作和输出的执行单元。
+| 任务节点 | 自动化判断 | 适配方向 |
+|---|---|---|
+| 审查页面视觉问题 | manual | 人工审查 / Agent Task |
+| 调用 GitHub API 创建 issue | automatable | n8n / GitHub Actions |
+| 运行测试脚本 | automatable | GitHub Actions |
+| 总结文档 | automatable | LLM / Agent Task Pack |
+| 判断是否通过验收 | manual / external | Review Gate |
 
-### 6.4 Edge
+### 场景三：导出到外部自动化工具
 
-Edge 表示 Stage 之间的关系，包括顺序、依赖、条件和反馈。
+用户希望把整理后的 IR 导出给外部工具。
 
-### 6.5 Checkpoint
+```text
+Workflow IR → Export Adapter → n8n JSON / GitHub Actions YAML / Agent Task Pack
+```
 
-Checkpoint 表示某个阶段是否完成、是否合格的判断点。
+MVP 不要求所有导出格式都可直接运行，但必须保持结构清晰、映射关系明确。
 
 ---
 
-## 7. 产品边界
+## 7. 产品核心概念
 
-### 7.1 是什么
+### 7.1 Workflow IR
 
-Workflow Capture 是：
+Workflow IR 是 Workflow Capture 的核心中间表示。
 
-- GPT 对话流程提取器
-- Markdown 到 Workflow Object 的转换器
-- Workflow 结构化编辑器
-- Workflow 资产沉淀工具
-- Agent Task Pack 的前置生成工具
+它不负责执行，只负责表达：
 
-### 7.2 不是什么
+- 这个流程想完成什么
+- 有哪些任务节点
+- 节点之间是什么关系
+- 产生哪些产物
+- 哪些节点可能被自动化
+- 适合导出到哪些外部工具
 
-Workflow Capture 不是：
+### 7.2 TaskNode
 
-- 普通 Markdown 编辑器
-- 纯流程图绘制工具
-- 项目管理软件
-- 自动化执行平台
-- 多 Agent 编排平台
-- Prompt 管理工具
+TaskNode 是流程里的最小任务节点。
+
+它不是运行时任务，而是一个可被理解、编辑和映射的任务单元。
+
+### 7.3 Relation
+
+Relation 表示 TaskNode 之间的关系，包括顺序、依赖、条件、并行、反馈。
+
+### 7.4 Artifact
+
+Artifact 表示流程中产生或消费的产物，例如 Markdown 文档、JSON、代码文件、Issue、PR、报告。
+
+### 7.5 ExportTarget
+
+ExportTarget 表示 IR 可以适配的目标格式或外部工具，例如：
+
+- markdown
+- json
+- agent_task_pack
+- n8n
+- github_actions
+- langgraph
+- temporal
 
 ---
 
@@ -186,37 +255,42 @@ Workflow Capture 不是：
 
 MVP 是否成功，主要看以下标准：
 
-1. 用户粘贴一段 GPT 回复后，系统能识别出主要阶段
-2. 每个阶段能包含合理的意图、动作、输入、输出
-3. 阶段之间能生成基本顺序关系
-4. 用户能快速发现并修正解析错误
-5. 修正后的 Workflow 可以导出为 JSON
-6. 同一个 Workflow 可以被重新渲染为不同视图
-7. 生成结果能作为后续 Agent 执行的输入
+1. 用户粘贴 GPT 回复后，系统能识别主要任务节点
+2. 系统能识别节点之间的基本关系
+3. 系统能判断节点是 manual、automatable 还是 unknown
+4. 系统能给出 suggestedTargets，例如 n8n、github_actions、agent_task_pack
+5. 用户能快速修正节点、关系和自动化提示
+6. Workflow IR 可以导出为通用 JSON
+7. 同一个 IR 可以渲染为线性视图和任务卡片视图
+8. 后续 Exporter 可以基于 IR 映射到外部工具，而不需要重新解析原文
 
 ---
 
 ## 9. 产品原则
 
-### 原则一：结构优先于视觉
+### 原则一：轻量 IR 优先
 
-先确保对象结构正确，再追求流程图视觉表达。
+不要把执行引擎的复杂状态提前塞进对象模型。
 
-### 原则二：可编辑优先于自动化
+### 原则二：适配优先于自建
+
+能导出到外部工具，就不要自己实现执行能力。
+
+### 原则三：可编辑优先于自动化
 
 LLM 抽取结果不能被当成绝对正确，必须允许用户快速修正。
 
-### 原则三：Fragment 优先于大而全 Workflow
+### 原则四：自动化提示不是自动执行
 
-系统应该优先沉淀可复用局部流程，而不是强迫所有内容都变成完整流程。
+系统可以判断某个节点适合自动化，但不代表本系统负责执行它。
 
-### 原则四：Schema 校验优先于自由生成
+### 原则五：Schema 校验优先于自由生成
 
-LLM 可以参与抽取，但最终产物必须通过 Schema 校验。
+LLM 可以参与抽取，但最终 IR 必须通过 Schema 校验。
 
-### 原则五：中文优先，多语言兼容
+### 原则六：中文优先，多语言兼容
 
-产品定义语言优先使用中文，但对象字段应保持英文命名，方便工程实现与跨语言兼容。
+产品定义语言优先使用中文，但对象字段保持英文命名，方便工程实现与跨语言兼容。
 
 ---
 
@@ -226,6 +300,6 @@ LLM 可以参与抽取，但最终产物必须通过 Schema 校验。
 
 后续文档分工：
 
-- `02_Workflow_Object_Model.md`：定义核心对象和对象关系
-- `03_Extraction_Pipeline.md`：定义从文本到 Workflow 的解析流程
-- `04_Workflow_Schema.md`：定义可落地的 JSON Schema / TypeScript 类型
+- `02_Workflow_Object_Model.md`：定义轻量 Workflow IR 对象模型
+- `03_Extraction_Pipeline.md`：定义从文本到 Workflow IR 的解析流程
+- `04_Workflow_Schema.md`：定义可落地的 IR Schema / TypeScript / Zod 草案
